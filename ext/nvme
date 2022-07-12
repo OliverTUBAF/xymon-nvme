@@ -1,0 +1,37 @@
+#!/bin/bash
+COLOR="green"
+COLUMN="nvme"
+MSG=""
+MSGHIDDEN=""
+NVME=`which nvme`
+LOOPCOUNTER=0
+if [ -z $NVME ]; then
+	COLOR="YELLOW"
+	MSG=`echo "${COLOR} nvme command not found"`
+$BB $BBDISP "status $MACHINE.$COLUMN $COLOR `date`
+${MSG}"
+exit 0
+fi
+DEVICELIST=`sudo $NVME list | egrep ^/`
+DEVICEPATHS=`echo "$DEVICELIST" | awk '{print $1}'`
+DEVICESERIALS=`echo "$DEVICELIST" | awk '{print $2}'`
+readarray -t DEVICESERIALSARRAY <<< "$DEVICESERIALS"
+
+if [ ! -z "$DEVICEPATHS" ]; then
+for I in $DEVICEPATHS; do 
+	SMARTLOGHIDDEN=`sudo $NVME smart-log $I -o json | egrep "^  " | tr -d ",\"" | sed "s/^  //" | awk -v prefix="${DEVICESERIALSARRAY[$LOOPCOUNTER]}_" '{print prefix $0}'`
+	MSGHIDDEN=`echo -e "${MSGHIDDEN}\n${SMARTLOGHIDDEN}"`
+	MSG=`echo -e "${MSG}\n<h3>$I - ${DEVICESERIALSARRAY[$LOOPCOUNTER]}</h3>"`
+	SMARTLOG=`sudo $NVME smart-log $I | grep -v "Smart Log for" | tr -d ":"`
+	MSG=`echo -e "${MSG}\n${SMARTLOG}"`
+	((LOOPCOUNTER=$LOOPCOUNTER+1))
+done
+else
+	COLOR="YELLOW"
+	MSG=`echo "${COLOR} no nvme device found"`
+fi
+MSG=`echo -e "<!-- NCV values${MSGHIDDEN}\n-->\n${MSG}"`
+# Nachricht an Xymon übermitteln
+$BB $BBDISP "status $MACHINE.$COLUMN $COLOR `date`
+${MSG}"
+exit 0
